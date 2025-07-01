@@ -1,3 +1,9 @@
 numpy
 pandas
 yfinance
+fastapi
+uvicorn[standard]
+scipy
+matplotlib
+seaborn
+pytest
