@@ -1,21 +1,22 @@
 # RiskLens - A Portfolio Value at Risk (VaR) & Stress Testing Engine
 
-> **Resume Pitch:** Designed and built a Python-based financial risk engine to quantify portfolio market risk. Implemented three distinct Value at Risk (VaR) models: historical, parametric, and a Monte Carlo simulation with 10,000+ paths. The system provides risk metrics and historical stress testing via a consolidated FastAPI endpoint, enabling data-driven risk management decisions.
-
-`RiskLens` is a backend Python service designed to quantify the market risk of a stock portfolio. It moves beyond simple profit and loss tracking to calculate the potential maximum loss under various market conditions using established financial risk models.
+`RiskLens` is a backend Python service designed to quantify the market risk of a stock portfolio. It moves beyond simple profit and loss tracking to calculate potential loss under various market conditions using both established financial models and predictive machine learning.
 
 ## Features
 
-* **Three VaR Models:**
-    * **Historical Value at Risk (VaR):** Calculates VaR based on the direct historical performance of the portfolio.
-    * **Parametric VaR (Variance-Covariance):** Calculates VaR by modeling portfolio returns using a normal distribution.
-    * **Monte Carlo Simulation VaR:** Simulates thousands of potential future price paths for the portfolio to derive a probability distribution of returns and calculate VaR.
+* **Comprehensive VaR Analysis:**
+    * **Historical VaR:** Calculates risk based on direct historical performance.
+    * **Parametric VaR:** Models risk using a normal distribution.
+    * **Cornish-Fisher VaR:** An advanced model that adjusts parametric VaR for real-world skewness and kurtosis in returns.
+    * **Monte Carlo VaR:** Simulates thousands of potential future price paths to model complex outcomes.
 
-* **Historical Stress Testing:** Measures portfolio resilience by calculating its performance during specific historical market crashes (e.g., the 2008 financial crisis, the COVID-19 drop in March 2020).
+* **Machine Learning Integration:**
+    * **ML-Powered Parametric VaR:** Uses a hyperparameter-tuned **XGBoost** model to forecast next-day volatility based on historical returns and technical indicators (RSI, MACD, Bollinger Bands), providing a dynamic, forward-looking risk assessment.
+    * **Model Evaluation:** The ML pipeline includes a train/test split and reports the Mean Squared Error (MSE) to validate model performance.
 
-* **RESTful API:** All risk metrics are exposed through a clean, consolidated API endpoint.
+* **Historical Stress Testing:** Measures portfolio resilience by calculating its performance during specific market crashes (e.g., 2008 crisis, 2020 COVID drop).
 
-* **Visualization:** Can generate and serve charts of the portfolio's return distribution and VaR cutoff points.
+* **Data Visualization:** Generates and serves charts of the portfolio's return distribution and VaR cutoff points via a dedicated API endpoint.
 
 ## Tech Stack
 
@@ -26,17 +27,22 @@
     * [Pandas](https://pandas.pydata.org/): For data manipulation and time-series analysis.
     * [NumPy](https://numpy.org/): For efficient numerical operations.
     * [SciPy](https://scipy.org/): For statistical functions.
-* **Financial Data Source:** [yfinance](https://pypi.org/project/yfinance/) library.
+* **Machine Learning:**
+    * [XGBoost](https://xgboost.ai/): For volatility forecasting.
+    * [Scikit-learn](https://scikit-learn.org/): For model evaluation (`train_test_split`, `MSE`) and hyperparameter tuning (`GridSearchCV`).
+    * [pandas-ta](https://github.com/twopirllc/pandas-ta): For generating technical analysis features.
+* **Financial Data Source:** [yfinance](https://pypi.org/project/yfinance/)
 * **Visualization:** [Matplotlib](https://matplotlib.org/) / [Seaborn](https://seaborn.pydata.org/)
 * **Deployment:** [Docker](https://www.docker.com/)
 
-## API Endpoint
+## API Endpoints
 
-The primary endpoint consolidates all risk analysis into a single powerful call.
-
-| Method | Path              | Description                               |
-| :----- | :---------------- | :---------------------------------------- |
-| `POST` | `/risk/analysis`  | Runs a full risk analysis on the portfolio. |
+| Method | Path | Description |
+| :--- | :--- | :--- |
+| `POST` | `/risk/analysis` | Runs a full risk analysis using all statistical models. |
+| `POST` | `/risk/parametric-var-ml` | Runs a Parametric VaR analysis using the ML volatility forecast. |
+| `POST` | `/risk/visualize-var` | Returns a PNG histogram of portfolio returns and historical VaR. |
+| `GET` | `/` | Health check endpoint. |
 
 ## Setup and Installation
 
@@ -46,4 +52,53 @@ Follow these steps to set up the project locally.
 
 ```bash
 git clone <your-repository-url>
-cd RiskLens
+cd risklens
+```
+
+**2. Create and Activate a Virtual Environment**
+
+```bash
+# On macOS/Linux
+python3 -m venv venv
+source venv/bin/activate
+
+# On Windows
+python -m venv venv
+.\venv\Scripts\activate
+```
+
+**3. Install Dependencies**
+
+```bash
+pip install -r requirements.txt
+```
+
+## How to Run
+
+The application can be run locally for development using Docker, which enables live-reloading.
+
+```bash
+# 1. Build the Docker image (only necessary when requirements.txt changes)
+docker build -t risklens .
+
+# 2. Run the container with a volume to sync your code
+docker run -p 8000:8000 -v ./app:/code/app risklens
+```
+
+The API will be available at `http://127.0.0.1:8000`.
+
+## How to Use
+
+The easiest way to interact with the API is through the automatically generated documentation.
+
+**1. Open the API Docs**
+
+Navigate to `http://127.0.0.1:8000/docs` in your web browser.
+
+**2. Test an Endpoint**
+
+* Expand the desired endpoint (e.g., `/risk/analysis`).
+* Click "Try it out".
+* Provide a portfolio in the "Request body".
+
+**Example Request Body:**
