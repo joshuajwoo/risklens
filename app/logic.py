@@ -5,6 +5,11 @@ import io
 import matplotlib
 import matplotlib.pyplot as plt
 import seaborn as sns
+import xgboost as xgb
+import pandas_ta as ta
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
+from sklearn.model_selection import GridSearchCV
 
 # Tell Matplotlib to use a non-interactive backend suitable for servers
 matplotlib.use('Agg')
@@ -101,3 +106,118 @@ def generate_var_histogram(daily_returns: pd.Series, var_95: float):
     buf.seek(0)
     plt.close(fig)
     return buf
+
+def compute_cornish_fisher_var(daily_returns: pd.Series, initial_value: float, confidence_level: float = 0.05):
+    """Calculates the Cornish-Fisher (Modified) VaR."""
+
+    # 1. Calculate skewness and kurtosis
+    skew = daily_returns.skew()
+    # The .kurt() method in pandas returns "excess" kurtosis, which is what we need.
+    kurtosis = daily_returns.kurt() 
+
+    # 2. Get the Z-score for the desired confidence level
+    z_score = norm.ppf(confidence_level)
+
+    # 3. Apply the Cornish-Fisher expansion formula to modify the Z-score
+    modified_z = (z_score + 
+                  (z_score**2 - 1) * skew / 6 + 
+                  (z_score**3 - 3 * z_score) * kurtosis / 24 -
+                  (2 * z_score**3 - 5 * z_score) * (skew**2) / 36)
+
+    # 4. Calculate VaR using the modified Z-score
+    mean_return = daily_returns.mean()
+    std_dev = daily_returns.std()
+
+    var = mean_return + modified_z * std_dev
+
+    return {
+        "var_95_percentile": f"{round(var * 100, 2)}%",
+        "var_dollar_amount_1_day_95_confidence": round(initial_value * var, 2)
+    }
+
+def create_volatility_features(daily_returns: pd.Series):
+    """Creates features for the volatility prediction model."""
+
+    df = pd.DataFrame(daily_returns)
+
+    # Add existing features
+    df['volatility_7d'] = daily_returns.rolling(window=7).std() * np.sqrt(252)
+    df['volatility_21d'] = daily_returns.rolling(window=21).std() * np.sqrt(252)
+
+    for i in range(1, 6):
+        df[f'return_lag_{i}'] = daily_returns.shift(i)
+
+    # --- New Advanced Features ---
+    # Add Relative Strength Index (RSI)
+    df['rsi'] = ta.rsi(daily_returns, length=14)
+
+    # Add MACD (Moving Average Convergence Divergence)
+    macd = ta.macd(daily_returns, fast=12, slow=26, signal=9)
+    # We'll use the MACD histogram, which shows momentum changes
+    df['macd_hist'] = macd['MACDh_12_26_9']
+
+    # --- Target Variable ---
+    df['target_volatility'] = df['volatility_7d'].shift(-1)
+
+    df.dropna(inplace=True)
+
+    return df
+
+def train_and_predict_volatility(daily_returns: pd.Series):
+    """
+    Performs a grid search to find the best XGBoost model, evaluates it,
+    and predicts the next day's volatility.
+    """
+    df = create_volatility_features(daily_returns)
+    if df.empty or len(df) < 50: # Grid search needs more data
+        return None, None, None
+
+    X = df.drop('target_volatility', axis=1)
+    y = df['target_volatility']
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, shuffle=False
+    )
+
+    # --- Hyperparameter Tuning Step ---
+    # 1. Define the grid of parameters to search
+    param_grid = {
+        'max_depth': [3, 5, 7],
+        'n_estimators': [50, 100, 200],
+        'learning_rate': [0.01, 0.1]
+    }
+
+    # 2. Create the XGBoost model
+    model = xgb.XGBRegressor(
+        objective='reg:squarederror',
+        subsample=0.8,
+        colsample_bytree=0.8,
+        random_state=42
+    )
+
+    # 3. Set up and run the Grid Search with 3-fold cross-validation
+    # n_jobs=-1 uses all available CPU cores to speed up the search
+    grid_search = GridSearchCV(
+        estimator=model, 
+        param_grid=param_grid, 
+        cv=3, 
+        scoring='neg_mean_squared_error', 
+        verbose=1, 
+        n_jobs=-1
+    )
+    grid_search.fit(X_train, y_train)
+
+    # 4. Get the best model found by the search
+    best_model = grid_search.best_estimator_
+
+    # --- Model Evaluation ---
+    test_predictions = best_model.predict(X_test)
+    mse = mean_squared_error(y_test, test_predictions)
+
+    # --- Final Prediction ---
+    prediction_features = X.iloc[[-1]]
+    predicted_volatility_annualized = best_model.predict(prediction_features)[0]
+    predicted_volatility_daily = predicted_volatility_annualized / np.sqrt(252)
+
+    # Return the prediction, performance score, and best parameters
+    return float(predicted_volatility_daily), float(mse), grid_search.best_params_
