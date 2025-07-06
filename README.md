@@ -102,3 +102,12 @@ Navigate to `http://127.0.0.1:8000/docs` in your web browser.
 * Provide a portfolio in the "Request body".
 
 **Example Request Body:**
+```JSON
+{
+  "stocks": {
+    "AAPL": 100,
+    "MSFT": 75
+  }
+}
+```
+* Click "Execute".
